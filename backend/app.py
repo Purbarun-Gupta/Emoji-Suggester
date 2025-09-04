@@ -24,7 +24,7 @@ app = FastAPI()
 # Allow frontend requests
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  
+    allow_origins=["*"],  # allow all for now; restrict later in prod
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -32,10 +32,22 @@ app.add_middleware(
 
 class InputText(BaseModel):
     text: str
+    top_n: int = 3   # default: return top 3 emojis
 
 @app.post("/predict")
 def predict(data: InputText):
     X = vectorizer.transform([data.text])
-    prediction = model.predict(X)
-    emoji = encoder.inverse_transform(prediction)[0]
-    return {"emoji": emoji}
+    probs = model.predict_proba(X)[0]  # get probability distribution
+
+    # Pick top_n indices
+    top_n = min(data.top_n, len(encoder.classes_))
+    top_indices = np.argsort(probs)[-top_n:][::-1]
+
+    # Build result list
+    results = [
+        {"emoji": encoder.classes_[i], "confidence": round(float(probs[i]), 4)}
+        for i in top_indices
+    ]
+
+    return {"input": data.text, "predictions": results}
+
